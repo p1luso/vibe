@@ -1,4 +1,4 @@
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Alert, RefreshControl, Image } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Alert, RefreshControl, Image, Modal, TextInput } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'expo-router';
@@ -12,6 +12,11 @@ export default function MyVibeScreen() {
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
   const [chats, setChats] = useState<(Chat & { otherUser?: Profile, lastMessage?: string })[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Edit State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -86,9 +91,27 @@ export default function MyVibeScreen() {
     loadData();
   }, [loadData]);
 
-  const handleLogout = async () => {
-    // Moved to Profile Screen
-    // await supabase.auth.signOut();
+  const handleEdit = () => {
+      if (!activeEvent) return;
+      setEditTitle(activeEvent.title);
+      setEditDesc(activeEvent.description || '');
+      setIsEditing(true);
+  };
+
+  const saveEdit = async () => {
+      if (!activeEvent) return;
+      
+      const { error } = await supabase
+        .from('events')
+        .update({ title: editTitle, description: editDesc })
+        .eq('id', activeEvent.id);
+
+      if (error) Alert.alert("Error updating vibe");
+      else {
+          setActiveEvent({ ...activeEvent, title: editTitle, description: editDesc });
+          setIsEditing(false);
+          Alert.alert("Success", "Vibe updated!");
+      }
   };
 
   const handleDeleteEvent = async () => {
@@ -142,12 +165,21 @@ export default function MyVibeScreen() {
             <View key={activeEvent.id} className="bg-zinc-900 p-5 rounded-xl border border-vibe-cyan mb-8 shadow-lg shadow-vibe-cyan/20">
                 <View className="flex-row justify-between items-start mb-2">
                     <Text className="text-vibe-white text-xl font-bold flex-1">{activeEvent.title}</Text>
+                    <TouchableOpacity onPress={handleEdit} className="p-2">
+                        <Ionicons name="pencil" size={18} color="#00FFFF" />
+                    </TouchableOpacity>
+                </View>
+                <View className="flex-row items-center mb-4 gap-2">
                     <View className={`px-2 py-1 rounded-full ${activeEvent.privacy === 'secret' ? 'bg-vibe-magenta/20' : 'bg-vibe-cyan/20'}`}>
                         <Text className={`text-xs font-bold ${activeEvent.privacy === 'secret' ? 'text-vibe-magenta' : 'text-vibe-cyan'}`}>
                             {activeEvent.privacy.toUpperCase()}
                         </Text>
                     </View>
+                    <Text className="text-gray-500 text-xs">
+                        {new Date(activeEvent.start_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </Text>
                 </View>
+
                 <Text className="text-gray-400 mb-4">{activeEvent.description}</Text>
                 
                 <View className="flex-row gap-2 mt-2">
@@ -161,13 +193,20 @@ export default function MyVibeScreen() {
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity 
-                        className="flex-1 bg-red-900/30 border border-red-900 py-3 rounded-lg items-center flex-row justify-center gap-2"
-                        onPress={handleDeleteEvent}
+                        className="flex-1 bg-vibe-cyan/20 border border-vibe-cyan py-3 rounded-lg items-center flex-row justify-center gap-2"
+                        onPress={() => Alert.alert("Invite", "Share link feature coming soon!")}
                     >
-                        <Ionicons name="trash" size={16} color="#EF4444" />
-                        <Text className="text-red-500 font-bold text-xs">End Vibe</Text>
+                        <Ionicons name="share-outline" size={16} color="#00FFFF" />
+                        <Text className="text-vibe-cyan font-bold text-xs">Invite</Text>
                     </TouchableOpacity>
                 </View>
+                <TouchableOpacity 
+                    className="w-full mt-2 bg-red-900/30 border border-red-900 py-3 rounded-lg items-center flex-row justify-center gap-2"
+                    onPress={handleDeleteEvent}
+                >
+                    <Ionicons name="trash" size={16} color="#EF4444" />
+                    <Text className="text-red-500 font-bold text-xs">End Vibe</Text>
+                </TouchableOpacity>
             </View>
         ) : (
             <View className="bg-zinc-900/50 border border-zinc-800 border-dashed p-8 rounded-xl mb-8 items-center justify-center">
@@ -216,6 +255,45 @@ export default function MyVibeScreen() {
         
         <View className="h-20" /> 
       </ScrollView>
+
+      {/* Edit Vibe Modal */}
+      <Modal visible={isEditing} transparent animationType="fade">
+        <View className="flex-1 bg-black/80 justify-center items-center p-6">
+            <View className="bg-zinc-900 w-full p-6 rounded-2xl border border-vibe-cyan">
+                <Text className="text-white text-xl font-bold mb-4">Edit Vibe</Text>
+                
+                <Text className="text-gray-400 mb-1">Title</Text>
+                <TextInput 
+                    className="bg-black text-white p-3 rounded-lg border border-zinc-700 mb-4"
+                    value={editTitle}
+                    onChangeText={setEditTitle}
+                />
+                
+                <Text className="text-gray-400 mb-1">Description</Text>
+                <TextInput 
+                    className="bg-black text-white p-3 rounded-lg border border-zinc-700 mb-6 h-20"
+                    multiline
+                    value={editDesc}
+                    onChangeText={setEditDesc}
+                />
+
+                <View className="flex-row gap-4">
+                    <TouchableOpacity 
+                        className="flex-1 bg-zinc-800 p-3 rounded-lg items-center"
+                        onPress={() => setIsEditing(false)}
+                    >
+                        <Text className="text-gray-400 font-bold">Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                        className="flex-1 bg-vibe-cyan p-3 rounded-lg items-center"
+                        onPress={saveEdit}
+                    >
+                        <Text className="text-black font-bold">Save</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+      </Modal>
     </View>
   );
 }

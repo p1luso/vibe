@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "temp_vibe",
-    "slug": "temp_vibe",
+    "name": "Vibe",
+    "slug": "vibe",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "tempvibe",
+    "icon": "./assets/images/vibe-icon.png",
+    "scheme": "vibe",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,12 +15,18 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.temp-vibe"
+      "bundleIdentifier": "com.piluso.vibe"
     },
     "android": {
+      "package": "com.piluso.vibe",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/vibe-icon.png",
         "backgroundColor": "#ffffff"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAsyL4SfX9ucJuaZj158G9OcVvS6bU0r3A"
+        }
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -45,10 +51,23 @@
             "./assets/fonts/SpaceMono-Regular.ttf"
           ]
         }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "paymentDescription": "Vibe Premium",
+          "merchantIdentifier": "merchant.com.piluso.vibe"
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c656a465-f7a4-4ba2-89c2-c6fadec34dd3"
+      }
     }
   }
 }

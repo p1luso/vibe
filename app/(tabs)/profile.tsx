@@ -1,20 +1,12 @@
-import { View, Text, ScrollView, TouchableOpacity, Image, Alert, Modal, TextInput, ActivityIndicator, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, Alert, Modal, TextInput, ActivityIndicator, Dimensions, Switch } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { LinearGradient } from 'expo-linear-gradient'; // Need to check if this is available or use View with style
+import { LinearGradient } from 'expo-linear-gradient'; 
 import { useRouter } from 'expo-router';
-
-// Fallback for LinearGradient if not installed, but it's standard in Expo. 
-// If not, I'll just use a View with background color.
-// Actually, I should check package.json or just install it. 
-// I'll assume standard Expo Go includes it, but `expo-linear-gradient` needs install usually.
-// I'll skip LinearGradient for now and use solid colors/images to be safe, or install it. 
-// User said "gradiente neón (Cyan/Magenta) de fondo", so I'll try to simulate with Views or just install it.
-// Let's install expo-linear-gradient quickly to be sure.
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -26,6 +18,10 @@ export default function ProfileScreen() {
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [loading, setLoading] = useState(false);
   
+  // Settings State
+  const [language, setLanguage] = useState<'en' | 'es'>('en'); // Default English
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   // Stats
   const [eventsCount, setEventsCount] = useState(0);
 
@@ -33,6 +29,11 @@ export default function ProfileScreen() {
   const [bio, setBio] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [photos, setPhotos] = useState<string[]>(Array(6).fill(null));
+  
+  // New Profile Fields
+  const [instagram, setInstagram] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
+  const [hometown, setHometown] = useState('');
 
     useEffect(() => {
         if (user) {
@@ -52,9 +53,6 @@ export default function ProfileScreen() {
             setTags(profile.tags || []);
             // Initialize photos with avatar in slot 0 if exists, and others from profile.photos
             const currentPhotos = [...(profile.photos || [])];
-            // Ensure avatar is separate or part of photos? 
-            // Instructions: "El primer espacio es el Avatar principal."
-            // So slot 0 is avatar_url.
             const combinedPhotos = Array(6).fill(null);
             if (profile.avatar_url) combinedPhotos[0] = profile.avatar_url;
             // Fill rest
@@ -62,6 +60,10 @@ export default function ProfileScreen() {
                 if (i < 5) combinedPhotos[i+1] = p; // Offset by 1 because 0 is avatar
             });
             setPhotos(combinedPhotos);
+            
+            // Mock fetching extra fields from profile metadata (assuming JSONB or new columns)
+            // For now, we just use local state placeholders or what's available
+            // In a real app, these would come from profile.metadata or specific columns
         }
     }, [profile, user]);
 
@@ -134,7 +136,8 @@ export default function ProfileScreen() {
               bio,
               tags,
               avatar_url: avatarUrl,
-              photos: otherPhotos
+              photos: otherPhotos,
+              // We would save extra fields here too
           }).eq('id', user?.id);
 
           if (error) throw error;
@@ -193,6 +196,14 @@ export default function ProfileScreen() {
                 className="absolute bottom-0 w-full h-48"
             />
             
+            {/* Settings Button */}
+            <TouchableOpacity 
+                className="absolute top-12 right-6 bg-black/50 p-2 rounded-full"
+                onPress={() => setIsSettingsOpen(true)}
+            >
+                <Ionicons name="settings-sharp" size={24} color="white" />
+            </TouchableOpacity>
+            
             {/* Info */}
             <View className="absolute bottom-6 left-6 right-6">
                 <View className="flex-row items-center gap-2 mb-1">
@@ -239,7 +250,10 @@ export default function ProfileScreen() {
         </View>
 
         {/* Premium Card */}
-        <TouchableOpacity className="mx-4 mb-6 bg-zinc-900 p-6 rounded-2xl border border-vibe-magenta shadow-lg shadow-vibe-magenta/30 overflow-hidden relative">
+        <TouchableOpacity 
+            className="mx-4 mb-6 bg-zinc-900 p-6 rounded-2xl border border-vibe-magenta shadow-lg shadow-vibe-magenta/30 overflow-hidden relative"
+            onPress={() => router.push('/premium')}
+        >
             <View className="absolute top-0 right-0 p-2 bg-vibe-magenta rounded-bl-xl">
                 <Text className="text-white font-bold text-xs">PRO</Text>
             </View>
@@ -264,24 +278,6 @@ export default function ProfileScreen() {
                 onPress={() => setIsPreviewing(true)}
             >
                 <Text className="text-white font-bold">Preview Profile</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-                className="bg-zinc-900 py-4 rounded-xl items-center border border-zinc-800 flex-row justify-center gap-2 mt-4"
-                onPress={handleLogout}
-            >
-                <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-                <Text className="text-red-500 font-bold">Log Out</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-                className="py-4 items-center mt-2"
-                onPress={() => Alert.alert("Delete Account", "This action cannot be undone. Are you sure?", [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Delete", style: "destructive", onPress: () => Alert.alert("Account Deleted", "Your data has been removed.") } // Mock delete for now, strictly would need an RPC or edge function to delete user from auth.users which is restricted from client.
-                ])}
-            >
-                <Text className="text-zinc-600 text-xs">Delete Account</Text>
             </TouchableOpacity>
         </View>
 
@@ -332,13 +328,37 @@ export default function ProfileScreen() {
                 {/* Bio */}
                 <Text className="text-gray-400 mb-3 font-bold text-xs uppercase tracking-wider">About Me</Text>
                 <TextInput 
-                    className="bg-zinc-900 text-white p-4 rounded-xl border border-zinc-800 mb-8 min-h-[100px]"
+                    className="bg-zinc-900 text-white p-4 rounded-xl border border-zinc-800 mb-4 min-h-[100px]"
                     multiline
                     maxLength={200}
                     placeholder="Write something about your vibe..."
                     placeholderTextColor="#555"
                     value={bio}
                     onChangeText={setBio}
+                />
+                
+                {/* Extra Fields */}
+                <Text className="text-gray-400 mb-3 font-bold text-xs uppercase tracking-wider">Details</Text>
+                <TextInput 
+                    className="bg-zinc-900 text-white p-4 rounded-xl border border-zinc-800 mb-3"
+                    placeholder="Instagram (@username)"
+                    placeholderTextColor="#555"
+                    value={instagram}
+                    onChangeText={setInstagram}
+                />
+                <TextInput 
+                    className="bg-zinc-900 text-white p-4 rounded-xl border border-zinc-800 mb-3"
+                    placeholder="Job / Education"
+                    placeholderTextColor="#555"
+                    value={jobTitle}
+                    onChangeText={setJobTitle}
+                />
+                <TextInput 
+                    className="bg-zinc-900 text-white p-4 rounded-xl border border-zinc-800 mb-8"
+                    placeholder="Hometown"
+                    placeholderTextColor="#555"
+                    value={hometown}
+                    onChangeText={setHometown}
                 />
 
                 {/* Tags */}
@@ -363,6 +383,60 @@ export default function ProfileScreen() {
                     {loading ? <ActivityIndicator color="black" /> : <Text className="text-black font-bold text-lg">Save Changes</Text>}
                 </TouchableOpacity>
             </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Settings Modal */}
+      <Modal visible={isSettingsOpen} animationType="slide" presentationStyle="formSheet">
+        <View className="flex-1 bg-zinc-900 p-6">
+            <View className="flex-row justify-between items-center mb-8">
+                <Text className="text-white text-2xl font-bold">Settings</Text>
+                <TouchableOpacity onPress={() => setIsSettingsOpen(false)}>
+                    <Text className="text-vibe-cyan font-bold">Done</Text>
+                </TouchableOpacity>
+            </View>
+
+            <View className="bg-zinc-800 rounded-xl overflow-hidden mb-6">
+                <View className="p-4 flex-row justify-between items-center border-b border-zinc-700">
+                    <Text className="text-white text-lg">Language</Text>
+                    <View className="flex-row gap-2">
+                        <TouchableOpacity 
+                            onPress={() => setLanguage('en')}
+                            className={`px-3 py-1 rounded ${language === 'en' ? 'bg-vibe-cyan' : 'bg-zinc-700'}`}
+                        >
+                            <Text className={`font-bold ${language === 'en' ? 'text-black' : 'text-gray-400'}`}>EN</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                            onPress={() => setLanguage('es')}
+                            className={`px-3 py-1 rounded ${language === 'es' ? 'bg-vibe-cyan' : 'bg-zinc-700'}`}
+                        >
+                            <Text className={`font-bold ${language === 'es' ? 'text-black' : 'text-gray-400'}`}>ES</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+                <View className="p-4 flex-row justify-between items-center">
+                    <Text className="text-white text-lg">Notifications</Text>
+                    <Switch value={true} trackColor={{ false: "#333", true: "#00FFFF" }} />
+                </View>
+            </View>
+
+            <TouchableOpacity 
+                className="bg-red-500/10 py-4 rounded-xl items-center border border-red-500/30 flex-row justify-center gap-2 mb-4"
+                onPress={handleLogout}
+            >
+                <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+                <Text className="text-red-500 font-bold">Log Out</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+                className="py-4 items-center"
+                onPress={() => Alert.alert("Delete Account", "This action cannot be undone. Are you sure?", [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Delete", style: "destructive", onPress: () => Alert.alert("Account Deleted", "Your data has been removed.") }
+                ])}
+            >
+                <Text className="text-zinc-600 text-xs">Delete Account</Text>
+            </TouchableOpacity>
         </View>
       </Modal>
 
@@ -395,6 +469,14 @@ export default function ProfileScreen() {
                         <Text className="text-white text-base mb-4 shadow-sm">{profile.bio}</Text>
                     )}
 
+                    {/* Extra Info in Preview */}
+                    {(jobTitle || hometown || instagram) && (
+                        <View className="flex-row gap-4 mb-4">
+                            {jobTitle ? <View className="flex-row items-center gap-1"><Ionicons name="briefcase" color="#ccc" size={14}/><Text className="text-gray-300 text-xs">{jobTitle}</Text></View> : null}
+                            {hometown ? <View className="flex-row items-center gap-1"><Ionicons name="home" color="#ccc" size={14}/><Text className="text-gray-300 text-xs">{hometown}</Text></View> : null}
+                        </View>
+                    )}
+
                     <View className="flex-row flex-wrap gap-2">
                         {profile.tags?.map(tag => (
                             <View key={tag} className="bg-black/40 px-3 py-1 rounded-full border border-white/20">
@@ -417,4 +499,3 @@ export default function ProfileScreen() {
     </View>
   );
 }
-

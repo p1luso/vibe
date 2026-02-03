@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet, Image, ActivityIndicator } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet, Image, ActivityIndicator, Modal, Switch, Platform } from 'react-native';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -8,6 +8,8 @@ import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { neonMapStyle } from '@/constants/MapStyles';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -20,6 +22,16 @@ export default function CreateEventModal() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [userLocation, setUserLocation] = useState<any>(null);
+  
+  // New features state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [is3D, setIs3D] = useState(false);
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showTimeModal, setShowTimeModal] = useState(false);
+  const mapRef = useRef<MapView>(null);
   
   const { user, profile } = useAuth();
   const router = useRouter();
@@ -38,6 +50,42 @@ export default function CreateEventModal() {
       }
     })();
   }, []);
+
+  const handleSearchLocation = async () => {
+    if (!searchQuery) return;
+    
+    try {
+        const result = await Location.geocodeAsync(searchQuery);
+        if (result && result.length > 0) {
+            const { latitude, longitude } = result[0];
+            const newRegion = {
+                latitude,
+                longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+            };
+            mapRef.current?.animateToRegion(newRegion, 1000);
+            setLocation({ latitude, longitude });
+        } else {
+            Alert.alert("Location not found", "Try a more specific address");
+        }
+    } catch (e) {
+        Alert.alert("Error searching", "Could not find location");
+    }
+  };
+
+  const toggle3D = () => {
+    const nextIs3D = !is3D;
+    setIs3D(nextIs3D);
+    if (location) {
+        mapRef.current?.animateCamera({
+            pitch: nextIs3D ? 75 : 0,
+            heading: nextIs3D ? 0 : 0,
+            altitude: nextIs3D ? 200 : 1000,
+            zoom: nextIs3D ? 18 : 15
+        }, { duration: 500 });
+    }
+  };
 
   const pickImage = async () => {
     if (photos.length >= 3) {
@@ -112,11 +160,38 @@ export default function CreateEventModal() {
         Alert.alert('Please select a location');
         return;
     }
-    if (step === 2 && (!title || !description)) {
-        Alert.alert('Please fill in title and description');
-        return;
+    if (step === 2) {
+        if (!title || !description) {
+            Alert.alert('Please fill in title and description');
+            return;
+        }
+        if (isScheduled && scheduledDate < new Date()) {
+             Alert.alert('Please pick a future date/time');
+             return;
+        }
     }
     setStep(step + 1);
+  };
+
+  const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+      const currentDate = selectedDate || scheduledDate;
+      if (Platform.OS === 'android') {
+          setShowDatePicker(false);
+      }
+      setScheduledDate(currentDate);
+      
+      // If we just picked a date on Android, show time picker next
+      if (Platform.OS === 'android' && event.type === 'set' && showDatePicker) {
+          setShowTimePicker(true);
+      }
+  };
+
+  const onTimeChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+      const currentDate = selectedDate || scheduledDate;
+      if (Platform.OS === 'android') {
+          setShowTimePicker(false);
+      }
+      setScheduledDate(currentDate);
   };
 
   const handleCreate = async () => {
@@ -128,6 +203,22 @@ export default function CreateEventModal() {
     setLoading(true);
     
     try {
+        const startTime = isScheduled ? scheduledDate.toISOString() : new Date().toISOString();
+        const endTime = new Date(new Date(startTime).getTime() + 9 * 60 * 60 * 1000).toISOString();
+
+        const { data: conflictingEvents } = await supabase
+            .from('events')
+            .select('id')
+            .eq('creator_id', user.id)
+            .gte('start_time', new Date(new Date(startTime).getTime() - 9 * 60 * 60 * 1000).toISOString()) // Starts within 9h before
+            .lt('start_time', endTime); // Starts before this one ends
+
+        if (conflictingEvents && conflictingEvents.length > 0) {
+            Alert.alert("Vibe Overlap", "You already have an active vibe scheduled for this time. You can't host two parties at once!");
+            setLoading(false);
+            return;
+        }
+
         // Upload images first
         const photoUrls = await uploadImages();
 
@@ -139,7 +230,8 @@ export default function CreateEventModal() {
             privacy,
             location: `SRID=4326;POINT(${location.longitude} ${location.latitude})`,
             radius_meters: 500,
-            photos: photoUrls
+            photos: photoUrls,
+            start_time: startTime
         }).select();
     
         if (error) throw error;
@@ -167,25 +259,56 @@ export default function CreateEventModal() {
 
       {step === 1 && (
         <View className="flex-1">
-            <Text className="text-gray-400 mb-2">Select Location</Text>
-            {userLocation ? (
-                <MapView
-                    style={{ flex: 1, borderRadius: 16 }}
-                    initialRegion={{
-                        latitude: userLocation.latitude,
-                        longitude: userLocation.longitude,
-                        latitudeDelta: 0.01,
-                        longitudeDelta: 0.01,
-                    }}
-                    onPress={(e) => setLocation(e.nativeEvent.coordinate)}
+            <View className="flex-row gap-2 mb-2">
+                <TextInput 
+                    className="flex-1 bg-zinc-900 text-white p-3 rounded-lg border border-zinc-700"
+                    placeholder="Search location (e.g. Entre Rios 1668)"
+                    placeholderTextColor="#666"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    onSubmitEditing={handleSearchLocation}
+                />
+                <TouchableOpacity 
+                    className="bg-vibe-cyan p-3 rounded-lg justify-center"
+                    onPress={handleSearchLocation}
                 >
-                    {location && <Marker coordinate={location} />}
-                </MapView>
-            ) : (
-                <View className="flex-1 justify-center items-center bg-zinc-900 rounded-lg">
-                    <Text className="text-gray-500">Loading Map...</Text>
-                </View>
-            )}
+                    <Ionicons name="search" size={20} color="black" />
+                </TouchableOpacity>
+            </View>
+
+            <View className="flex-1 relative rounded-xl overflow-hidden">
+                {userLocation ? (
+                    <MapView
+                        ref={mapRef}
+                        provider={PROVIDER_GOOGLE}
+                        customMapStyle={neonMapStyle}
+                        style={{ flex: 1 }}
+                        initialRegion={{
+                            latitude: userLocation.latitude,
+                            longitude: userLocation.longitude,
+                            latitudeDelta: 0.01,
+                            longitudeDelta: 0.01,
+                        }}
+                        onPress={(e) => setLocation(e.nativeEvent.coordinate)}
+                        showsBuildings={true}
+                        pitchEnabled={true}
+                    >
+                        {location && <Marker coordinate={location} pinColor="#00FFFF" />}
+                    </MapView>
+                ) : (
+                    <View className="flex-1 justify-center items-center bg-zinc-900">
+                        <Text className="text-gray-500">Loading Map...</Text>
+                    </View>
+                )}
+                
+                <TouchableOpacity 
+                    className="absolute bottom-4 right-4 bg-black/80 p-3 rounded-full border border-vibe-cyan"
+                    onPress={toggle3D}
+                >
+                    <Text className="text-vibe-cyan font-bold">{is3D ? "2D" : "3D"}</Text>
+                </TouchableOpacity>
+            </View>
+
              <TouchableOpacity 
                 className="bg-vibe-cyan mt-4 p-4 rounded-lg"
                 onPress={handleNext}
@@ -214,6 +337,71 @@ export default function CreateEventModal() {
                 multiline
             />
             
+            <View className="mb-6 bg-zinc-900 p-4 rounded-lg border border-zinc-700">
+                <View className="flex-row justify-between items-center mb-2">
+                    <Text className="text-gray-400">Schedule Vibe?</Text>
+                    <Switch 
+                        value={isScheduled} 
+                        onValueChange={(val) => {
+                            setIsScheduled(val);
+                            if(val) setShowTimeModal(true);
+                        }}
+                        trackColor={{ false: "#333", true: "#00FFFF" }}
+                        thumbColor={isScheduled ? "#fff" : "#f4f3f4"}
+                    />
+                </View>
+                {isScheduled ? (
+                    <View>
+                        <Text className="text-vibe-cyan mb-2">Starts on:</Text>
+                        
+                        {Platform.OS === 'android' ? (
+                            <View className="flex-row gap-2">
+                                <TouchableOpacity 
+                                    className="flex-1 bg-black p-3 rounded border border-zinc-600 items-center"
+                                    onPress={() => setShowDatePicker(true)}
+                                >
+                                    <Text className="text-white">{scheduledDate.toLocaleDateString()}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                    className="flex-1 bg-black p-3 rounded border border-zinc-600 items-center"
+                                    onPress={() => setShowTimePicker(true)}
+                                >
+                                    <Text className="text-white">{scheduledDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
+                                </TouchableOpacity>
+                            </View>
+                        ) : (
+                            <View className="bg-black rounded-lg border border-zinc-700 overflow-hidden">
+                                <DateTimePicker
+                                    testID="dateTimePicker"
+                                    value={scheduledDate}
+                                    mode="datetime"
+                                    is24Hour={true}
+                                    display="spinner"
+                                    onChange={onDateChange}
+                                    textColor="white"
+                                    themeVariant="dark"
+                                    minimumDate={new Date()}
+                                />
+                            </View>
+                        )}
+                        
+                        {(showDatePicker || showTimePicker) && Platform.OS === 'android' && (
+                            <DateTimePicker
+                                testID="dateTimePicker"
+                                value={scheduledDate}
+                                mode={showDatePicker ? 'date' : 'time'}
+                                is24Hour={true}
+                                display="default"
+                                onChange={showDatePicker ? onDateChange : onTimeChange}
+                                minimumDate={new Date()}
+                            />
+                        )}
+                    </View>
+                ) : (
+                    <Text className="text-vibe-cyan font-bold">Starts Immediately</Text>
+                )}
+            </View>
+
             <Text className="text-gray-400 mb-2">Photos (Max 3)</Text>
             <View className="flex-row gap-2 mb-6">
                 {photos.map((uri, index) => (
@@ -271,6 +459,13 @@ export default function CreateEventModal() {
                 <Text className="text-vibe-white text-xl font-bold mb-2">{title}</Text>
                 <Text className="text-gray-400 mb-4">{description}</Text>
                 
+                <View className="mb-4">
+                     <Text className="text-gray-500 text-xs">WHEN</Text>
+                     <Text className="text-vibe-white font-bold">
+                        {isScheduled ? scheduledDate.toLocaleString() : "Right Now!"}
+                     </Text>
+                </View>
+
                 {photos.length > 0 && (
                     <ScrollView horizontal className="mb-4" showsHorizontalScrollIndicator={false}>
                         {photos.map((uri, index) => (
@@ -306,6 +501,30 @@ export default function CreateEventModal() {
             </TouchableOpacity>
         </View>
       )}
+
+      <Modal
+        visible={showTimeModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowTimeModal(false)}
+      >
+        <View className="flex-1 bg-black/80 justify-center items-center p-6">
+            <View className="bg-zinc-900 p-6 rounded-2xl w-full border border-vibe-magenta">
+                <Text className="text-vibe-white text-xl font-bold mb-4 text-center">⏳ Good to know</Text>
+                <Text className="text-gray-300 text-center mb-6">
+                    All Vibes automatically close <Text className="text-vibe-magenta font-bold">9 hours</Text> after they start.
+                    {"\n\n"}
+                    This keeps the map fresh and full of active jodas!
+                </Text>
+                <TouchableOpacity 
+                    className="bg-vibe-magenta p-4 rounded-lg"
+                    onPress={() => setShowTimeModal(false)}
+                >
+                    <Text className="text-white font-bold text-center">Got it</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

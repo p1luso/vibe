@@ -21,6 +21,8 @@ export const unstable_settings = {
 
 SplashScreen.preventAutoHideAsync();
 
+import { StripeProvider } from '@stripe/stripe-react-native';
+
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
@@ -42,15 +44,17 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-            <AuthProvider>
-                <ThemeProvider value={DarkTheme}>
-                    <RootLayoutNav />
-                </ThemeProvider>
-            </AuthProvider>
-        </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <StripeProvider publishableKey="pk_test_123456789">
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <SafeAreaProvider>
+                <AuthProvider>
+                    <ThemeProvider value={DarkTheme}>
+                        <RootLayoutNav />
+                    </ThemeProvider>
+                </AuthProvider>
+            </SafeAreaProvider>
+        </GestureHandlerRootView>
+    </StripeProvider>
   );
 }
 
