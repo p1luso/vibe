@@ -51,7 +51,7 @@ export default function Onboarding() {
         className="bg-vibe-white w-full p-4 rounded-lg"
         onPress={handleVerification}
       >
-        <Text className="text-vibe-black text-center font-bold text-lg">Complete Verification (Dev Bypass)</Text>
+        <Text className="text-vibe-black text-center font-bold text-lg">Complete Verification (Dev Bypass)</Text> 
       </TouchableOpacity>
     </View>
   );

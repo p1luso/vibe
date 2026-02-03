@@ -1,7 +1,7 @@
 import { StyleSheet, View, Text, Alert, TouchableOpacity, Modal, Image } from 'react-native';
-import MapView, { Marker, Callout } from 'react-native-maps';
+import MapView, { Marker, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
@@ -13,6 +13,8 @@ export default function MapScreen() {
   const [events, setEvents] = useState<Event[]>([]);
   const router = useRouter();
   const { user, profile, refreshProfile } = useAuth();
+
+  const mapRef = useRef<MapView>(null);
 
   // Initial location fetch
   useEffect(() => {
@@ -27,6 +29,25 @@ export default function MapScreen() {
       setLocation(location);
     })();
   }, []);
+
+  // Force 3D pitch when map is ready or location changes
+  useEffect(() => {
+    if (location && mapRef.current) {
+        // Wait a bit for map to load
+        setTimeout(() => {
+            mapRef.current?.animateCamera({
+                center: {
+                    latitude: location.coords.latitude,
+                    longitude: location.coords.longitude,
+                },
+                pitch: 65, // Slightly less steep to ensure buildings render
+                heading: 0,
+                altitude: 150, // Lower altitude
+                zoom: 18 // Higher zoom
+            }, { duration: 1000 });
+        }, 500);
+    }
+  }, [location]);
 
   // Fetch events when screen focuses or location changes
   useFocusEffect(
@@ -138,16 +159,29 @@ export default function MapScreen() {
     <View className="flex-1 bg-vibe-black">
       {location ? (
         <MapView
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
           style={StyleSheet.absoluteFill}
-          customMapStyle={mapStyle}
-          initialRegion={{
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            latitudeDelta: 0.0922,
-            longitudeDelta: 0.0421,
+          customMapStyle={neonMapStyle}
+          initialCamera={{
+            center: {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            },
+            pitch: 75,
+            heading: 0,
+            altitude: 200, // Lower altitude for better 3D effect
+            zoom: 17,
           }}
+          pitchEnabled={true}
+          rotateEnabled={true}
+          zoomEnabled={true}
+          scrollEnabled={true}
+          showsBuildings={true}
           showsUserLocation
           showsMyLocationButton
+          showsCompass={false}
+          toolbarEnabled={false}
         >
           {events.map((event) => {
              const coords = event.location?.coordinates || [0,0];
@@ -200,175 +234,9 @@ export default function MapScreen() {
   );
 }
 
-const mapStyle = [
+const neonMapStyle = [
+  // 1. GLOBAL RESET: Make everything black by default
   {
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#212121"
-      }
-    ]
-  },
-  {
-    "elementType": "labels.icon",
-    "stylers": [
-      {
-        "visibility": "off"
-      }
-    ]
-  },
-  {
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#757575"
-      }
-    ]
-  },
-  {
-    "elementType": "labels.text.stroke",
-    "stylers": [
-      {
-        "color": "#212121"
-      }
-    ]
-  },
-  {
-    "featureType": "administrative",
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#757575"
-      }
-    ]
-  },
-  {
-    "featureType": "administrative.country",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#9e9e9e"
-      }
-    ]
-  },
-  {
-    "featureType": "administrative.land_parcel",
-    "stylers": [
-      {
-        "visibility": "off"
-      }
-    ]
-  },
-  {
-    "featureType": "administrative.locality",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#bdbdbd"
-      }
-    ]
-  },
-  {
-    "featureType": "poi",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#757575"
-      }
-    ]
-  },
-  {
-    "featureType": "poi.park",
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#181818"
-      }
-    ]
-  },
-  {
-    "featureType": "poi.park",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#616161"
-      }
-    ]
-  },
-  {
-    "featureType": "poi.park",
-    "elementType": "labels.text.stroke",
-    "stylers": [
-      {
-        "color": "#1b1b1b"
-      }
-    ]
-  },
-  {
-    "featureType": "road",
-    "elementType": "geometry.fill",
-    "stylers": [
-      {
-        "color": "#2c2c2c"
-      }
-    ]
-  },
-  {
-    "featureType": "road",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#8a8a8a"
-      }
-    ]
-  },
-  {
-    "featureType": "road.arterial",
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#373737"
-      }
-    ]
-  },
-  {
-    "featureType": "road.highway",
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#3c3c3c"
-      }
-    ]
-  },
-  {
-    "featureType": "road.highway.controlled_access",
-    "elementType": "geometry",
-    "stylers": [
-      {
-        "color": "#4e4e4e"
-      }
-    ]
-  },
-  {
-    "featureType": "road.local",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#616161"
-      }
-    ]
-  },
-  {
-    "featureType": "transit",
-    "elementType": "labels.text.fill",
-    "stylers": [
-      {
-        "color": "#757575"
-      }
-    ]
-  },
-  {
-    "featureType": "water",
     "elementType": "geometry",
     "stylers": [
       {
@@ -376,12 +244,97 @@ const mapStyle = [
       }
     ]
   },
+  // 2. BUILDINGS ONLY (Override black with Neon Purple)
   {
-    "featureType": "water",
+    "featureType": "landscape.man_made",
+    "elementType": "geometry.fill",
+    "stylers": [
+      {
+        "color": "#852eff"
+      }
+    ]
+  },
+  {
+    "featureType": "landscape.man_made",
+    "elementType": "geometry.stroke",
+    "stylers": [
+      {
+        "color": "#000000"
+      },
+      {
+        "weight": 3
+      }
+    ]
+  },
+  // 3. POIs (Business, etc) - Ensure they inherit purple or are specific
+  {
+    "featureType": "poi",
+    "elementType": "geometry.fill",
+    "stylers": [
+      {
+        "color": "#852eff"
+      }
+    ]
+  },
+  
+  // 4. LABELS & TEXT
+  {
     "elementType": "labels.text.fill",
     "stylers": [
       {
-        "color": "#3d3d3d"
+        "color": "#00ffff"
+      }
+    ]
+  },
+  {
+    "elementType": "labels.text.stroke",
+    "stylers": [
+      {
+        "color": "#000000"
+      },
+      {
+        "weight": 4
+      }
+    ]
+  },
+  // 5. PARKS & WATER (Specific colors)
+  {
+    "featureType": "poi.park",
+    "elementType": "geometry.fill",
+    "stylers": [
+      {
+        "color": "#00ff00"
+      }
+    ]
+  },
+  {
+    "featureType": "water",
+    "elementType": "geometry.fill",
+    "stylers": [
+      {
+        "color": "#000055"
+      }
+    ]
+  },
+  // 6. ROADS
+  {
+    "featureType": "road",
+    "elementType": "geometry.fill",
+    "stylers": [
+      {
+        "color": "#000000"
+      }
+    ]
+  },
+  {
+    "featureType": "road",
+    "elementType": "geometry.stroke",
+    "stylers": [
+      {
+        "color": "#00ffff"
+      },
+      {
+        "weight": 1
       }
     ]
   }
